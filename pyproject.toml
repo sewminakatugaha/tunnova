@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tunnova"
+version = "0.1.0.dev0"
+description = "Tunnova: safe Linux VPN client prototype (offline link preview only)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [{name = "Community contributors"}]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: X11 Applications :: GTK",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+]
+
+[project.scripts]
+tunnova = "tunnova.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["tunnova*"]

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Tunnova
+Comment=Simple and transparent Linux VPN client (prototype)
+Exec=tunnova
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=true
