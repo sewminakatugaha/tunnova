@@ -43,8 +43,8 @@ class VpnApplication(Gtk.Application):
         content.append(description)
 
         self.entry = Gtk.PasswordEntry()
-        self.entry.set_placeholder_text("vless://…")
-        self.entry.set_show_peek_icon(True)
+        self.entry.props.placeholder_text = "vless://..."
+        self.entry.props.show_peek_icon = True
         content.append(self.entry)
 
         inspect_btn = Gtk.Button(label="Inspect Link (Offline)")
