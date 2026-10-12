@@ -24,7 +24,7 @@
 1. No `sudo` GUI and no privilege escalation inside the desktop process.
 2. The privileged helper must expose only narrowly specified actions; no arbitrary command execution, shell expansion, unrestricted path writes, or user-provided command flags.
 3. Use systemd ownership and polkit authorization for privileged operations after a formal threat-model review; the first milestone implements neither.
-4. Connection profiles are sensitive. Avoid logging VLESS credentials, URLs or tokens. Plan secret storage with libsecret or an equivalent system keyring.
+4. Connection profiles are sensitive. The current profile manager keeps them in memory only. Display only the profile name, server address, port, transport and TLS status; never display complete VLESS links, UUIDs or credentials in logs or error messages. Plan secret storage with libsecret or an equivalent system keyring before adding persistence.
 5. The networking engine's upstream version and configuration schema must be pinned and checked. Validate the engine configuration with its own `check` command before activation.
 6. Recovery is as important as startup: network state ownership, cleanup on crash, routing-loop prevention, and behavior during Wi-Fi ↔ hotspot transitions.
 7. Cross-distro packaging needs separate installers/tests. Do not assume NetworkManager, systemd or Polkit behave identically everywhere.
@@ -36,4 +36,4 @@ GTK4/PyGObject is readily available through common Linux repositories and lightw
 
 ## Phase 0 boundaries
 
-The included app can parse and preview one link format *offline*. It cannot connect. No networking components have been installed by this scaffold.
+The included app can import, list, select and remove supported VLESS + WebSocket + TLS profiles *offline* for the current session. It cannot connect, and profiles are not persisted. No networking components have been installed by this scaffold.
