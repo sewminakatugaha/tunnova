@@ -19,9 +19,9 @@ See [identity and naming notes](docs/IDENTITY.md).
 
 ## Project status
 
-**Milestone 0 (foundation)**. The current app can preview a VLESS + WebSocket + TLS link **locally**. Its **Connect** button is deliberately disabled. It does not modify network interfaces, routes, DNS, firewall rules, proxies, or systemd units.
+**Current implementation: offline VLESS profile manager.** The app imports supported VLESS + WebSocket + TLS links locally, lists profiles for the current session, rejects duplicates, and lets users select and remove profiles. Profile data is kept in memory only and is not permanently stored. Its **Connect** button is deliberately disabled. It does not modify network interfaces, routes, DNS, firewall rules, proxies, or systemd units.
 
-Tunnova is the official project working name. This codebase is a starting scaffold, **not a working VPN or a public release**. The repository has been created; testing, package distribution, and trademark checks are separate milestones.
+Tunnova is the official project working name. This codebase is an offline profile-manager prototype, **not a working VPN or a public release**. Testing, package distribution, and trademark checks are separate milestones.
 
 ## Why build it?
 
@@ -42,7 +42,7 @@ Too many Linux users encounter opaque VPN errors, missing permissions, broken sy
    python3 -m tunnova
    ```
 
-3. Try this **synthetic, non-working** link in the preview input (do not use a real credential in a bug report):
+3. Try this **synthetic, non-working** link in the profile import field (do not use a real credential in a bug report):
 
    ```text
    vless://11111111-2222-4333-8444-555555555555@example.com:443?type=ws&security=tls&path=%2Fedge&sni=example.com#Demo
@@ -60,7 +60,7 @@ Too many Linux users encounter opaque VPN errors, missing permissions, broken sy
    python3 -m tunnova --version
    ```
 
-Do **not** paste real VLESS links into GitHub issues, logs, screenshots, or source control; links can contain credentials.
+Imported profiles are available only until the application exits. Do **not** paste real VLESS links into GitHub issues, logs, screenshots, or source control; links can contain credentials.
 
 ## Technical direction (proposal)
 
