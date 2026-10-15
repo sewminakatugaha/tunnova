@@ -78,6 +78,39 @@ class ProfileTests(unittest.TestCase):
                 "?type=ws&security=tls&encryption=aes-128-gcm"
             )
 
+    def test_accept_header_type_none_case_insensitively(self):
+        profile = parse_vless_uri(
+            f"vless://{UUID}@example.com:443?type=ws&security=tls&headerType=NoNe"
+        )
+        self.assertEqual(profile.transport, "ws")
+        self.assertEqual(profile.security, "tls")
+
+    def test_header_type_is_optional(self):
+        profile = parse_vless_uri(
+            f"vless://{UUID}@example.com:443?type=ws&security=tls"
+        )
+        self.assertEqual(profile.server, "example.com")
+
+    def test_reject_unsupported_or_empty_header_type(self):
+        for header_type in ("srtp", ""):
+            with self.subTest(header_type=header_type):
+                link = (
+                    f"vless://{UUID}@example.com:443"
+                    f"?type=ws&security=tls&headerType={header_type}"
+                )
+                with self.assertRaises(ProfileError) as cm:
+                    parse_vless_uri(link)
+                self.assertEqual(str(cm.exception), "Unsupported VLESS header type.")
+                self.assertNotIn(UUID, str(cm.exception))
+
+    def test_reject_duplicate_header_type(self):
+        with self.assertRaises(ProfileError) as cm:
+            parse_vless_uri(
+                f"vless://{UUID}@example.com:443"
+                "?type=ws&security=tls&headerType=none&headerType=none"
+            )
+        self.assertEqual(str(cm.exception), "Duplicate VLESS parameters are not supported.")
+
     def test_reject_encoded_control_characters_in_configuration_fields(self):
         invalid_links = (
             f"vless://{UUID}@example.com:443?type=ws&security=tls&path=%2Fedge%00",

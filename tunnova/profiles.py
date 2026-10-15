@@ -11,7 +11,7 @@ from uuid import UUID
 
 
 _SUPPORTED_VLESS_PARAMETERS = frozenset(
-    {"type", "security", "encryption", "sni", "host", "path"}
+    {"type", "security", "encryption", "sni", "host", "path", "headerType"}
 )
 
 
@@ -87,6 +87,8 @@ def parse_vless_uri(uri: str) -> VlessProfile:
         raise ProfileError("This prototype previews VLESS + WebSocket + TLS links only.")
     if params.get("encryption", ["none"])[0].lower() != "none":
         raise ProfileError("This prototype supports VLESS encryption=none only.")
+    if params.get("headerType", ["none"])[0].lower() != "none":
+        raise ProfileError("Unsupported VLESS header type.")
 
     server_name = params.get("sni", [""])[0]
     ws_host = params.get("host", [""])[0]
