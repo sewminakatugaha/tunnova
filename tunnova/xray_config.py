@@ -48,6 +48,29 @@ def _is_address_or_domain(value: str, *, allow_brackets: bool = False) -> bool:
     return bool(domain) and all(_DNS_LABEL.fullmatch(label) for label in labels)
 
 
+def _validate_tls_verify_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value or _contains_control_char(value):
+        raise XrayConfigError("The TLS verification hostname is invalid.")
+    try:
+        ascii_domain = value.encode("idna").decode("ascii")
+    except UnicodeError:
+        raise XrayConfigError("The TLS verification hostname is invalid.") from None
+    domain = ascii_domain[:-1] if ascii_domain.endswith(".") else ascii_domain
+    if not domain or len(ascii_domain) > 253:
+        raise XrayConfigError("The TLS verification hostname is invalid.")
+    try:
+        ipaddress.ip_address(domain)
+    except ValueError:
+        pass
+    else:
+        raise XrayConfigError("The TLS verification hostname is invalid.")
+    if not all(_DNS_LABEL.fullmatch(label) for label in domain.split(".")):
+        raise XrayConfigError("The TLS verification hostname is invalid.")
+    return ascii_domain
+
+
 def _is_websocket_host(value: str) -> bool:
     if not value:
         return True
@@ -120,19 +143,31 @@ def _validate_profile(profile: VlessProfile) -> None:
 
 
 def build_xray_config(
-    profile: VlessProfile, socks_port: int = 10890
+    profile: VlessProfile,
+    socks_port: int = 10890,
+    *,
+    tls_verify_name: str | None = None,
 ) -> dict[str, Any]:
     """Return an Xray JSON-compatible configuration without writing it to disk.
 
     The returned object contains credentials and must not be logged or printed.
+    An explicit TLS verification hostname is independent of profile SNI.
     """
     _validate_profile(profile)
+    tls_verify_name = _validate_tls_verify_name(tls_verify_name)
     if (
         not isinstance(socks_port, int)
         or isinstance(socks_port, bool)
         or not 1 <= socks_port <= 65535
     ):
         raise XrayConfigError("The local SOCKS5 port must be an integer from 1 to 65535.")
+
+    tls_settings: dict[str, Any] = {
+        "serverName": profile.server_name,
+        "allowInsecure": False,
+    }
+    if tls_verify_name is not None:
+        tls_settings["verifyPeerCertByName"] = tls_verify_name
 
     return {
         "inbounds": [
@@ -157,10 +192,7 @@ def build_xray_config(
                 "streamSettings": {
                     "network": "ws",
                     "security": "tls",
-                    "tlsSettings": {
-                        "serverName": profile.server_name,
-                        "allowInsecure": False,
-                    },
+                    "tlsSettings": tls_settings,
                     "wsSettings": {
                         "path": profile.ws_path,
                         "host": profile.ws_host,

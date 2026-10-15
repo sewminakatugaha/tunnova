@@ -42,8 +42,49 @@ class XrayConfigTests(unittest.TestCase):
         self.assertEqual(stream_settings["network"], "ws")
         self.assertNotIn("method", stream_settings)
         self.assertEqual(stream_settings["tlsSettings"]["serverName"], "certificate.example.com")
+        self.assertNotIn("verifyPeerCertByName", stream_settings["tlsSettings"])
         self.assertEqual(stream_settings["wsSettings"]["host"], "cdn.example.net:8443")
         self.assertEqual(stream_settings["wsSettings"]["path"], "/connect")
+
+    def test_explicit_tls_verify_name_is_independent_of_sni_and_websocket_host(self):
+        profile = make_profile(
+            sni="sni.example.com",
+            host="websocket.example.net",
+        )
+
+        tls_settings = build_xray_config(
+            profile,
+            tls_verify_name="trusted-cert.example.org",
+        )["outbounds"][0]["streamSettings"]["tlsSettings"]
+        ws_settings = build_xray_config(
+            profile,
+            tls_verify_name="trusted-cert.example.org",
+        )["outbounds"][0]["streamSettings"]["wsSettings"]
+
+        self.assertEqual(tls_settings["serverName"], "sni.example.com")
+        self.assertEqual(
+            tls_settings["verifyPeerCertByName"], "trusted-cert.example.org"
+        )
+        self.assertIs(tls_settings["allowInsecure"], False)
+        self.assertEqual(ws_settings["host"], "websocket.example.net")
+
+    def test_rejects_invalid_tls_verify_names(self):
+        for verify_name in (
+            "",
+            "bad host.example",
+            "bad..example.com",
+            "bad\n.example.com",
+            "first.example.com second.example.com",
+            "first.example.com,second.example.com",
+            "192.0.2.10",
+            42,
+        ):
+            with self.subTest(verify_name=verify_name):
+                with self.assertRaises(XrayConfigError) as cm:
+                    build_xray_config(make_profile(), tls_verify_name=verify_name)
+                self.assertEqual(
+                    str(cm.exception), "The TLS verification hostname is invalid."
+                )
 
     def test_config_is_json_compatible_and_keeps_tls_verification_enabled(self):
         config = build_xray_config(make_profile())
