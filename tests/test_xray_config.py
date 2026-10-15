@@ -38,10 +38,12 @@ class XrayConfigTests(unittest.TestCase):
         self.assertEqual(outbound["settings"]["address"], "gateway.example.org")
         self.assertEqual(outbound["settings"]["port"], 443)
         self.assertEqual(outbound["settings"]["id"], SYNTHETIC_UUID)
-        self.assertEqual(outbound["streamSettings"]["tlsSettings"]["serverName"],
-                         "certificate.example.com")
-        self.assertEqual(outbound["streamSettings"]["wsSettings"]["host"], "cdn.example.net:8443")
-        self.assertEqual(outbound["streamSettings"]["wsSettings"]["path"], "/connect")
+        stream_settings = outbound["streamSettings"]
+        self.assertEqual(stream_settings["network"], "ws")
+        self.assertNotIn("method", stream_settings)
+        self.assertEqual(stream_settings["tlsSettings"]["serverName"], "certificate.example.com")
+        self.assertEqual(stream_settings["wsSettings"]["host"], "cdn.example.net:8443")
+        self.assertEqual(stream_settings["wsSettings"]["path"], "/connect")
 
     def test_config_is_json_compatible_and_keeps_tls_verification_enabled(self):
         config = build_xray_config(make_profile())

@@ -155,7 +155,7 @@ def build_xray_config(
                     "encryption": "none",
                 },
                 "streamSettings": {
-                    "method": "websocket",
+                    "network": "ws",
                     "security": "tls",
                     "tlsSettings": {
                         "serverName": profile.server_name,

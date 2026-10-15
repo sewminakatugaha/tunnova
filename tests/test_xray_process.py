@@ -167,15 +167,42 @@ class XrayProcessManagerTests(unittest.TestCase):
 
         popen.assert_not_called()
 
+    @patch("tunnova.xray_process.subprocess.Popen")
+    def test_rejects_nonlocal_or_additional_inbounds_before_launch(self, popen):
+        invalid_configs = []
+        for listen in ("0.0.0.0", "::", "::1", "localhost", "192.0.2.10"):
+            config = json.loads(json.dumps(self.config))
+            config["inbounds"][0]["listen"] = listen
+            invalid_configs.append((f"listen={listen}", config))
+        config_with_extra_inbound = json.loads(json.dumps(self.config))
+        config_with_extra_inbound["inbounds"].append(
+            {
+                "listen": "127.0.0.1",
+                "port": 10891,
+                "protocol": "socks",
+                "settings": {"auth": "noauth"},
+            }
+        )
+        invalid_configs.append(("additional inbound", config_with_extra_inbound))
+
+        for label, config in invalid_configs:
+            with self.subTest(case=label):
+                with self.assertRaisesRegex(XrayProcessError, "configuration is invalid"):
+                    self.manager.start(config)
+
+        popen.assert_not_called()
+
     @patch("tunnova.xray_process.XrayProcessManager._listener_ready", return_value=False)
     @patch("tunnova.xray_process.subprocess.Popen")
     def test_unexpected_startup_exit_is_reported(self, popen, _ready):
         self.process.returncode = 2
         popen.return_value = self.process
 
-        with self.assertRaisesRegex(XrayProcessError, "exited before"):
+        with self.assertRaisesRegex(XrayProcessError, "exited before") as raised:
             self.manager.start(self.config)
 
+        self.assertIn("status 2", str(raised.exception))
+        self.assertNotIn(SYNTHETIC_UUID, str(raised.exception))
         self.assertEqual(self.manager.state, XrayProcessState.FAILED)
 
     @patch("tunnova.xray_process.XrayProcessManager._listener_ready")
@@ -356,12 +383,27 @@ class XrayProcessManagerTests(unittest.TestCase):
 
     def test_readiness_probe_uses_only_loopback(self):
         connection = unittest.mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.recv.side_effect = [b"\x05", b"\x00"]
         with patch("tunnova.xray_process.socket.create_connection", return_value=connection) as connect:
             self.assertTrue(XrayProcessManager._listener_ready(10890))
 
         connect.assert_called_once_with(("127.0.0.1", 10890), timeout=0.1)
         connection.__enter__.assert_called_once()
         connection.__exit__.assert_called_once()
+        connection.sendall.assert_called_once_with(b"\x05\x01\x00")
+
+    def test_readiness_rejects_non_socks_or_unsupported_auth_replies(self):
+        for response in ((b"\x04", b"\x00"), (b"\x05", b"\x02"), (b"",)):
+            with self.subTest(response=response):
+                connection = unittest.mock.MagicMock()
+                connection.__enter__.return_value = connection
+                connection.recv.side_effect = response
+                with patch(
+                    "tunnova.xray_process.socket.create_connection",
+                    return_value=connection,
+                ):
+                    self.assertFalse(XrayProcessManager._listener_ready(10890))
 
 
 if __name__ == "__main__":

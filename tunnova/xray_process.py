@@ -48,7 +48,7 @@ class XrayProcessManager:
         self._startup_timeout = startup_timeout
         self._shutdown_timeout = shutdown_timeout
         self._readiness_interval = readiness_interval
-        self._process: subprocess.Popen[str] | None = None
+        self._process: subprocess.Popen[bytes] | None = None
         self._state = XrayProcessState.STOPPED
         self._condition = threading.Condition()
         self._launching = False
@@ -94,7 +94,7 @@ class XrayProcessManager:
                 close_fds=True,
                 start_new_session=True,
             )
-        except (OSError, ValueError):
+        except BaseException as exc:
             with self._condition:
                 self._launching = False
                 self._state = (
@@ -103,7 +103,11 @@ class XrayProcessManager:
                     else XrayProcessState.FAILED
                 )
                 self._condition.notify_all()
-            raise XrayProcessError("Xray could not be started; check the configured executable.") from None
+            if isinstance(exc, Exception):
+                raise XrayProcessError(
+                    "Xray could not be started; check the configured executable."
+                ) from None
+            raise
 
         cleanup_owner = False
         with self._condition:
@@ -183,17 +187,20 @@ class XrayProcessManager:
 
     @staticmethod
     def _get_socks_port(config: dict[str, Any]) -> int:
-        if not isinstance(config, dict) or not isinstance(config.get("inbounds"), list):
+        if (
+            not isinstance(config, dict)
+            or not isinstance(config.get("inbounds"), list)
+            or len(config["inbounds"]) != 1
+        ):
             raise ValueError
-        local_socks = [
-            inbound for inbound in config["inbounds"]
-            if isinstance(inbound, dict)
-            and inbound.get("protocol") == "socks"
-            and inbound.get("listen") == "127.0.0.1"
-        ]
-        if len(local_socks) != 1:
+        inbound = config["inbounds"][0]
+        if (
+            not isinstance(inbound, dict)
+            or inbound.get("protocol") != "socks"
+            or inbound.get("listen") != "127.0.0.1"
+        ):
             raise ValueError
-        port = local_socks[0].get("port")
+        port = inbound.get("port")
         if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
             raise ValueError
         return port
@@ -212,10 +219,21 @@ class XrayProcessManager:
     @staticmethod
     def _listener_ready(port: int) -> bool:
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
-                return True
+            with socket.create_connection(("127.0.0.1", port), timeout=0.1) as connection:
+                connection.sendall(b"\x05\x01\x00")
+                return XrayProcessManager._recv_exact(connection, 2) == b"\x05\x00"
         except OSError:
             return False
+
+    @staticmethod
+    def _recv_exact(connection: socket.socket, size: int) -> bytes | None:
+        response = bytearray()
+        while len(response) < size:
+            chunk = connection.recv(size - len(response))
+            if not chunk:
+                return None
+            response.extend(chunk)
+        return bytes(response)
 
     def _write_configuration(
         self, process: subprocess.Popen[bytes], config_data: bytes, deadline: float
@@ -232,8 +250,12 @@ class XrayProcessManager:
                 with self._condition:
                     if self._process is not process or self._state != XrayProcessState.STARTING:
                         raise XrayProcessError("Xray startup was stopped.")
-                    if process.poll() is not None:
-                        raise XrayProcessError("Xray exited while receiving its configuration.")
+                    exit_status = process.poll()
+                    if exit_status is not None:
+                        raise XrayProcessError(
+                            "Xray exited while receiving its configuration "
+                            f"(status {exit_status})."
+                        )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise XrayProcessError("Xray configuration input timed out.")
@@ -260,21 +282,31 @@ class XrayProcessManager:
             with self._condition:
                 if self._process is not process or self._state != XrayProcessState.STARTING:
                     raise XrayProcessError("Xray startup was stopped.")
-                if process.poll() is not None:
-                    raise XrayProcessError("Xray exited before its local SOCKS listener became ready.")
+                exit_status = process.poll()
+                if exit_status is not None:
+                    raise XrayProcessError(
+                        "Xray exited before its local SOCKS listener became ready "
+                        f"(status {exit_status})."
+                    )
 
             ready = self._listener_ready(port)
             with self._condition:
                 if self._process is not process or self._state != XrayProcessState.STARTING:
                     raise XrayProcessError("Xray startup was stopped.")
-                if process.poll() is not None:
-                    raise XrayProcessError("Xray exited during local SOCKS readiness checks.")
+                exit_status = process.poll()
+                if exit_status is not None:
+                    raise XrayProcessError(
+                        "Xray exited during local SOCKS readiness checks "
+                        f"(status {exit_status})."
+                    )
                 if ready:
                     self._state = XrayProcessState.RUNNING
                     self._condition.notify_all()
                     return
             time.sleep(min(self._readiness_interval, max(0, deadline - time.monotonic())))
-        raise XrayProcessError("Xray did not become ready before the startup timeout.")
+        raise XrayProcessError(
+            "Xray did not complete a valid local SOCKS5 handshake before the startup timeout."
+        )
 
     def _claim_start_cleanup(self, process: subprocess.Popen[bytes]) -> tuple[bool, bool]:
         with self._condition:
